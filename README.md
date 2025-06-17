@@ -1,6 +1,8 @@
 # go-yit - YAML Iterator
 
-[![GoDoc](https://godoc.org/github.com/dprotaso/go-yit?status.svg)](https://godoc.org/github.com/dprotaso/go-yit)
+[![GoDoc](https://godoc.org/github.com/jimschubert/go-yit?status.svg)](https://godoc.org/github.com/dprotaso/go-yit)
+
+NOTE: This is a fork of [go-yit](https://github.com/dprotaso/go-yit). I've upgraded to the official YAML v3 library and removed additional dependencies.
 
 ## Introduction
 
@@ -11,7 +13,7 @@ functional style methods for iterating over YAML documents.
 
 Import the package
 ```go
-import "github.com/dprotaso/go-yit"
+import "github.com/jimschubert/go-yit"
 ```
 
 
@@ -23,8 +25,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/dprotaso/go-yit"
-	"gopkg.in/yaml.v3"
+	"github.com/jimschubert/go-yit"
+	"go.yaml.in/yaml/v3"
 )
 
 var data = `

@@ -1,202 +1,179 @@
 package yit
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
-	. "github.com/onsi/gomega"
-
 	"go.yaml.in/yaml/v3"
+	"testing"
 )
 
-var _ = Describe("Predicates", func() {
-	Describe("WithKind", func() {
-		predicate := WithKind(yaml.ScalarNode)
+func TestWithKind(t *testing.T) {
+	predicate := WithKind(yaml.ScalarNode)
 
-		It("returns true when nodes match the supplied Kind", func() {
-			Expect(predicate(&yaml.Node{Kind: yaml.ScalarNode})).To(BeTrue())
-		})
+	if !predicate(&yaml.Node{Kind: yaml.ScalarNode}) {
+		t.Errorf("should return true when nodes match the supplied Kind")
+	}
+	if predicate(&yaml.Node{Kind: yaml.MappingNode}) {
+		t.Errorf("should return false when nodes don't match the supplied Kind")
+	}
+}
 
-		It("returns false when nodes don't match the supplied Kind", func() {
-			Expect(predicate(&yaml.Node{Kind: yaml.MappingNode})).To(BeFalse())
-		})
-	})
+func TestUnionAndIntersect(t *testing.T) {
+	type testCase struct {
+		op       func(...Predicate) Predicate
+		a, b     bool
+		expected bool
+	}
 
-	DescribeTable("Truths",
-		func(op func(p ...Predicate) Predicate, a, b, expected bool) {
-			actual := op(
-				func(node *yaml.Node) bool {
-					return a
-				}, func(node *yaml.Node) bool {
-					return b
-				},
-			)
+	cases := []testCase{
+		{Union, true, true, true},
+		{Union, true, false, true},
+		{Union, false, true, true},
+		{Union, false, false, false},
+		{Intersect, true, true, true},
+		{Intersect, true, false, false},
+		{Intersect, false, true, false},
+		{Intersect, false, false, false},
+	}
 
-			Expect(actual(nil)).To(Equal(expected))
-		},
-		Entry("T | T = T", Union, true, true, true),
-		Entry("T | F = T", Union, true, false, true),
-		Entry("F | T = T", Union, false, true, true),
-		Entry("F | F = F", Union, false, false, false),
-		Entry("T & T = T", Intersect, true, true, true),
-		Entry("T & F = F", Intersect, true, false, false),
-		Entry("F & T = F", Intersect, false, true, false),
-		Entry("F & F = F", Intersect, false, false, false),
+	for _, c := range cases {
+		actual := c.op(
+			func(node *yaml.Node) bool { return c.a },
+			func(node *yaml.Node) bool { return c.b },
+		)
+		if actual(nil) != c.expected {
+			t.Errorf("expected %v, got %v for op", c.expected, actual(nil))
+		}
+	}
+}
+
+func TestWithShortTag(t *testing.T) {
+	predicate := WithShortTag("booooo")
+
+	if !predicate(&yaml.Node{Tag: "booooo"}) {
+		t.Errorf("should return true when nodes match the tag")
+	}
+	if predicate(&yaml.Node{Tag: "not boooo"}) {
+		t.Errorf("should return false when nodes do not match the tag")
+	}
+}
+
+func TestWithMapKey(t *testing.T) {
+	predicate := WithMapKey("a")
+
+	nodeWithKey := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+		{Kind: yaml.ScalarNode, Value: "b"},
+	}}
+	if !predicate(nodeWithKey) {
+		t.Errorf("should return true when the map has a specific key")
+	}
+
+	nodeWithoutKey := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "c"},
+		{Kind: yaml.ScalarNode, Value: "d"},
+	}}
+	if predicate(nodeWithoutKey) {
+		t.Errorf("should return false when the map doesn't have a specific key")
+	}
+
+	notAMap := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+	}}
+	if predicate(notAMap) {
+		t.Errorf("should return false when the node isn't a map")
+	}
+}
+
+func TestWithMapValue(t *testing.T) {
+	predicate := WithMapValue("b")
+
+	nodeWithValue := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+		{Kind: yaml.ScalarNode, Value: "b"},
+	}}
+	if !predicate(nodeWithValue) {
+		t.Errorf("should return true when the map has a specific value")
+	}
+
+	nodeWithoutValue := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "c"},
+		{Kind: yaml.ScalarNode, Value: "d"},
+	}}
+	if predicate(nodeWithoutValue) {
+		t.Errorf("should return false when the map doesn't have a specific value")
+	}
+
+	notAMap := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "b"},
+	}}
+	if predicate(notAMap) {
+		t.Errorf("should return false when the node isn't a map")
+	}
+}
+
+func TestWithMapKeyValue(t *testing.T) {
+	predicate := WithMapKeyValue(
+		WithStringValue("a"),
+		WithStringValue("b"),
 	)
 
-	Describe("WithShortTag", func() {
-		predicate := WithShortTag("booooo")
+	nodeWithPair := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+		{Kind: yaml.ScalarNode, Value: "b"},
+	}}
+	if !predicate(nodeWithPair) {
+		t.Errorf("should return true when the map has a specific key value pair")
+	}
 
-		It("returns true when nodes match the tag", func() {
-			Expect(predicate(&yaml.Node{Tag: "booooo"})).To(BeTrue())
-		})
+	nodeWithoutPair := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+		{Kind: yaml.ScalarNode, Value: "c"},
+	}}
+	if predicate(nodeWithoutPair) {
+		t.Errorf("should return false when the map doesn't have a specific key value pair")
+	}
 
-		It("returns false when nodes do not match the tag", func() {
-			Expect(predicate(&yaml.Node{Tag: "not boooo"})).To(BeFalse())
-		})
-	})
+	notAMap := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "a"},
+		{Kind: yaml.ScalarNode, Value: "b"},
+	}}
+	if predicate(notAMap) {
+		t.Errorf("should return false when the node isn't a map")
+	}
+}
 
-	Describe("WithMapKey", func() {
-		predicate := WithMapKey("a")
+func TestWithPrefix(t *testing.T) {
+	predicate := WithPrefix("pre")
 
-		It("returns true when the map has a specific key", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-				{Kind: yaml.ScalarNode, Value: "b"},
-			}}
+	nodeWithPrefix := &yaml.Node{Value: "prefix"}
+	if !predicate(nodeWithPrefix) {
+		t.Errorf("should return true when the node's value has a prefix")
+	}
 
-			result := predicate(node)
-			Expect(result).To(BeTrue())
-		})
+	nodeWithoutPrefix := &yaml.Node{Value: "postfix"}
+	if predicate(nodeWithoutPrefix) {
+		t.Errorf("should return false when the node's value does not have a prefix")
+	}
+}
 
-		It("returns false when the map doesn't have a specific key", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "c"},
-				{Kind: yaml.ScalarNode, Value: "d"},
-			}}
+func TestWithSuffix(t *testing.T) {
+	predicate := WithSuffix("fix")
 
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
+	nodeWithSuffix := &yaml.Node{Value: "prefix"}
+	if !predicate(nodeWithSuffix) {
+		t.Errorf("should return true when the node's value has a suffix")
+	}
 
-		It("returns false when the node isn't a map", func() {
-			node := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-			}}
+	nodeWithoutSuffix := &yaml.Node{Value: "fixpost"}
+	if predicate(nodeWithoutSuffix) {
+		t.Errorf("should return false when the node's value does not have a suffix")
+	}
+}
 
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-	})
-
-	Describe("WithMapValues", func() {
-		predicate := WithMapValue("b")
-
-		It("returns true when the map has a specific key", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-				{Kind: yaml.ScalarNode, Value: "b"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeTrue())
-		})
-
-		It("returns false when the map doesn't have a specific key", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "c"},
-				{Kind: yaml.ScalarNode, Value: "d"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-
-		It("returns false when the node isn't a map", func() {
-			node := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "b"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-	})
-
-	Describe("WithMapKeyValue", func() {
-		predicate := WithMapKeyValue(
-			// Key Predicate
-			WithStringValue("a"),
-
-			// Value Predicate
-			WithStringValue("b"),
-		)
-
-		It("returns true when the map has a specific key value pair", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-				{Kind: yaml.ScalarNode, Value: "b"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeTrue())
-		})
-
-		It("returns false when the map doesn't have a specific key value pair", func() {
-			node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-				{Kind: yaml.ScalarNode, Value: "c"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-
-		It("returns false when the node isn't a map", func() {
-			node := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{
-				{Kind: yaml.ScalarNode, Value: "a"},
-				{Kind: yaml.ScalarNode, Value: "b"},
-			}}
-
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-	})
-
-	Describe("WithPrefix", func() {
-		predicate := WithPrefix("pre")
-
-		It("returns true when the node's value has a prefix", func() {
-			node := &yaml.Node{Value: "prefix"}
-			result := predicate(node)
-			Expect(result).To(BeTrue())
-		})
-
-		It("returns false when the node's value does not have a prefix", func() {
-			node := &yaml.Node{Value: "postfix"}
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-	})
-
-	Describe("WithSuffix", func() {
-		predicate := WithSuffix("fix")
-
-		It("returns true when the node's value has a prefix", func() {
-			node := &yaml.Node{Value: "prefix"}
-			result := predicate(node)
-			Expect(result).To(BeTrue())
-		})
-
-		It("returns false when the node's value does not have a prefix", func() {
-			node := &yaml.Node{Value: "fixpost"}
-			result := predicate(node)
-			Expect(result).To(BeFalse())
-		})
-	})
-
-	Describe("Negate", func() {
-		It("reverses the result of a predicate", func() {
-			Expect(Negate(All)(nil)).To(BeFalse())
-			Expect(Negate(None)(nil)).To(BeTrue())
-		})
-	})
-})
+func TestNegate(t *testing.T) {
+	if Negate(All)(nil) {
+		t.Errorf("Negate(All) should be false")
+	}
+	if !Negate(None)(nil) {
+		t.Errorf("Negate(None) should be true")
+	}
+}
