@@ -1,6 +1,9 @@
 # go-yit - YAML Iterator
 
-[![GoDoc](https://godoc.org/github.com/dprotaso/go-yit?status.svg)](https://godoc.org/github.com/dprotaso/go-yit)
+<!-- point docs to forked repo -->
+[![GoDoc](https://godoc.org/github.com/jimschubert/go-yit?status.svg)](https://godoc.org/github.com/jimschubert/go-yit)
+
+NOTE: This is a fork of [go-yit](https://github.com/dprotaso/go-yit). I've upgraded to the official YAML v3 library and removed additional dependencies.
 
 ## Introduction
 
@@ -24,7 +27,7 @@ import (
 	"log"
 
 	"github.com/dprotaso/go-yit"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 var data = `

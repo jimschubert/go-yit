@@ -1,243 +1,311 @@
 package yit
 
 import (
+	"go.yaml.in/yaml/v3"
 	"strings"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
-	. "github.com/onsi/gomega"
-
-	"gopkg.in/yaml.v3"
+	"testing"
 )
 
-var _ = Describe("Iterator", func() {
-	Describe("FromNode", func() {
-		It("returns the root node", func() {
-			node := &yaml.Node{}
-			next := FromNode(node)
+func TestFromNode(t *testing.T) {
+	node := &yaml.Node{}
+	next := FromNode(node)
 
-			item, ok := next()
-			Expect(item).To(Equal(node))
-			Expect(ok).To(BeTrue())
+	item, ok := next()
+	if item != node {
+		t.Errorf("expected item to be node, got %#v", item)
+	}
+	if !ok {
+		t.Errorf("expected ok to be true")
+	}
 
-			item, ok = next()
-			Expect(item).To(BeNil())
-			Expect(ok).To(BeFalse())
-		})
-	})
+	item, ok = next()
+	if item != nil {
+		t.Errorf("expected item to be nil, got %#v", item)
+	}
+	if ok {
+		t.Errorf("expected ok to be false")
+	}
+}
 
-	DescribeTable("RecurseNodes",
-		func(yaml string, values ...*yaml.Node) {
-			doc := toYAML(yaml)
+func TestRecurseNodes(t *testing.T) {
+	tests := []struct {
+		name   string
+		yaml   string
+		values []*yaml.Node
+	}{
+		{
+			name:   "scalar",
+			yaml:   "a",
+			values: []*yaml.Node{docNode, scalarNode("a")},
+		},
+		{
+			name:   "sequence",
+			yaml:   "[a, b, c]",
+			values: []*yaml.Node{docNode, seqNode, scalarNode("a"), scalarNode("b"), scalarNode("c")},
+		},
+		{
+			name:   "map",
+			yaml:   "{a: b}",
+			values: []*yaml.Node{docNode, mapNode, scalarNode("a"), scalarNode("b")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := toYAMLTest(tt.yaml, t)
 			next := FromNode(doc).RecurseNodes()
-
-			for _, value := range values {
+			for i, value := range tt.values {
 				node, ok := next()
-
-				Expect(ok).To(BeTrue())
-				Expect(node.Kind).To(Equal(value.Kind))
-				Expect(node.Value).To(Equal(value.Value))
-			}
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		},
-
-		Entry("scalar", "a",
-			docNode, scalarNode("a")),
-
-		Entry("sequence", "[a, b, c]",
-			docNode, seqNode, scalarNode("a"), scalarNode("b"), scalarNode("c")),
-
-		Entry("map", "{a: b}",
-			docNode, mapNode, scalarNode("a"), scalarNode("b")),
-	)
-
-	DescribeTable("Values",
-		func(yaml string, values ...*yaml.Node) {
-			doc := toYAML(yaml)
-			next := FromNode(doc).
-				Values(). // the root is the document node
-				Values()
-
-			for _, value := range values {
-				node, ok := next()
-
-				Expect(ok).To(BeTrue())
-				Expect(node.Kind).To(Equal(value.Kind))
-				Expect(node.Value).To(Equal(value.Value))
-			}
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-
-		},
-
-		Entry("scalar", nil /* no values */),
-
-		Entry("sequence", "[a, b, c]",
-			scalarNode("a"), scalarNode("b"), scalarNode("c")),
-
-		Entry("map", "a: b\nc: d",
-			scalarNode("a"), scalarNode("b"), scalarNode("c"), scalarNode("d"),
-		),
-	)
-
-	Describe("Filter", func() {
-		It("passes items through satisfying the predicate", func() {
-			next := FromNode(docNode).Filter(All)
-			node, ok := next()
-
-			Expect(ok).To(BeTrue())
-			Expect(node).To(Equal(docNode))
-		})
-
-		It("does not pass items that do not satisfy the predicate", func() {
-			next := FromNode(docNode).Filter(None)
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-
-		It("predicate is not invoked when there are no items", func() {
-			empty := Iterator(func() (*yaml.Node, bool) {
-				return nil, false
-			})
-
-			next := empty.Filter(func(*yaml.Node) bool {
-				Fail("unexpected invocation of the filter")
-				return true
-			})
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-	})
-
-	Describe("MapKeys", func() {
-		It("returns the keys of a map", func() {
-			next := FromNode(toYAML("a: b\nc: d\ne: f")).
-				RecurseNodes().
-				Filter(WithKind(yaml.MappingNode)).
-				MapKeys()
-
-			for _, value := range []string{"a", "c", "e"} {
-				node, ok := next()
-				Expect(ok).To(BeTrue())
-				Expect(node.Value).To(Equal(value))
-			}
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-
-		It("returns nothing for sequences", func() {
-			next := FromNode(toYAML("[a, b, c, d]")).
-				RecurseNodes().
-				Filter(WithKind(yaml.SequenceNode)).
-				MapKeys()
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-	})
-
-	Describe("MapValues", func() {
-		It("returns the keys of a map", func() {
-			next := FromNode(toYAML("a: b\nc: d\ne: f")).
-				RecurseNodes().
-				Filter(WithKind(yaml.MappingNode)).
-				MapValues()
-
-			for _, value := range []string{"b", "d", "f"} {
-				node, ok := next()
-				Expect(ok).To(BeTrue())
-				Expect(node.Value).To(Equal(value))
-			}
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-
-		It("returns nothing for sequences", func() {
-			next := FromNode(toYAML("[a, b, c, d]")).
-				RecurseNodes().
-				Filter(WithKind(yaml.SequenceNode)).
-				MapValues()
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-	})
-
-	Describe("Iterate", func() {
-		It("custom iterators can be supplied", func() {
-			repeater := func(next Iterator) Iterator {
-				return func() (node *yaml.Node, ok bool) {
-					node, ok = next()
-					if ok {
-						node = scalarNode(strings.Repeat(node.Value, 2))
-					}
-					return
+				if !ok {
+					t.Errorf("expected ok to be true at index %d", i)
+				}
+				if node.Kind != value.Kind || node.Value != value.Value {
+					t.Errorf("expected node.Kind=%d, Value=%q; got Kind=%d, Value=%q", value.Kind, value.Value, node.Kind, node.Value)
 				}
 			}
-
-			next := FromNodes(scalarNode("a")).
-				Iterate(repeater).
-				Iterate(repeater)
-
-			node, ok := next()
-			Expect(ok).To(BeTrue())
-			Expect(node.Value).To(Equal("aaaa"))
-		})
-	})
-
-	Describe("ValuesForMap", func() {
-		It("returns the values of a map matching the key/value predicates", func() {
-			next := FromNode(toYAML("a: b\nc: d\ne: f")).
-				RecurseNodes().
-				Filter(WithKind(yaml.MappingNode)).
-				ValuesForMap(All, func(node *yaml.Node) bool {
-					return node.Value == "d"
-				})
-
-			node, ok := next()
-			Expect(ok).To(BeTrue())
-			Expect(node.Value).To(Equal("d"))
-
-			_, ok = next()
-			Expect(ok).To(BeFalse())
-		})
-
-		It("returns nothing for sequences", func() {
-			next := FromNode(toYAML("[a, b, c, d]")).
-				RecurseNodes().
-				Filter(WithKind(yaml.SequenceNode)).
-				ValuesForMap(All, All)
-
 			_, ok := next()
-			Expect(ok).To(BeFalse())
-		})
-	})
-
-	Describe("FromIterators", func() {
-		It("merges multiple iterators into a single stream", func() {
-			next := FromIterators(
-				FromNode(&yaml.Node{Value: "a"}),
-				FromNode(&yaml.Node{Value: "b"}),
-				FromNode(&yaml.Node{Value: "c"}),
-			)
-
-			for _, value := range []string{"a", "b", "c"} {
-				node, ok := next()
-				Expect(ok).To(BeTrue(), value+" to be present")
-				Expect(node.Value).To(Equal(value))
+			if ok {
+				t.Errorf("expected ok to be false at end")
 			}
-
-			_, ok := next()
-			Expect(ok).To(BeFalse())
 		})
+	}
+}
+
+func TestValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		yaml   string
+		values []*yaml.Node
+	}{
+		{
+			name:   "scalar",
+			yaml:   "",
+			values: nil,
+		},
+		{
+			name:   "sequence",
+			yaml:   "[a, b, c]",
+			values: []*yaml.Node{scalarNode("a"), scalarNode("b"), scalarNode("c")},
+		},
+		{
+			name:   "map",
+			yaml:   "a: b\nc: d",
+			values: []*yaml.Node{scalarNode("a"), scalarNode("b"), scalarNode("c"), scalarNode("d")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := toYAMLTest(tt.yaml, t)
+			next := FromNode(doc).Values().Values()
+			for i, value := range tt.values {
+				node, ok := next()
+				if !ok {
+					t.Errorf("expected ok to be true at index %d", i)
+				}
+				if node.Kind != value.Kind || node.Value != value.Value {
+					t.Errorf("expected node.Kind=%d, Value=%q; got Kind=%d, Value=%q", value.Kind, value.Value, node.Kind, node.Value)
+				}
+			}
+			_, ok := next()
+			if ok {
+				t.Errorf("expected ok to be false at end")
+			}
+		})
+	}
+}
+
+func TestFilter(t *testing.T) {
+	t.Run("passes items through satisfying the predicate", func(t *testing.T) {
+		next := FromNode(docNode).Filter(All)
+		node, ok := next()
+		if !ok {
+			t.Errorf("expected ok to be true")
+		}
+		if node != docNode {
+			t.Errorf("expected node to be docNode")
+		}
 	})
-})
+
+	t.Run("does not pass items that do not satisfy the predicate", func(t *testing.T) {
+		next := FromNode(docNode).Filter(None)
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false")
+		}
+	})
+
+	t.Run("predicate is not invoked when there are no items", func(t *testing.T) {
+		empty := Iterator(func() (*yaml.Node, bool) {
+			return nil, false
+		})
+
+		called := false
+		next := empty.Filter(func(*yaml.Node) bool {
+			called = true
+			return true
+		})
+
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false")
+		}
+		if called {
+			t.Errorf("predicate should not be called")
+		}
+	})
+}
+
+func TestMapKeys(t *testing.T) {
+	t.Run("returns the keys of a map", func(t *testing.T) {
+		next := FromNode(toYAMLTest("a: b\nc: d\ne: f", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.MappingNode)).
+			MapKeys()
+
+		for _, value := range []string{"a", "c", "e"} {
+			node, ok := next()
+			if !ok {
+				t.Errorf("expected ok to be true for key %q", value)
+			}
+			if node.Value != value {
+				t.Errorf("expected node.Value=%q, got %q", value, node.Value)
+			}
+		}
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false at end")
+		}
+	})
+
+	t.Run("returns nothing for sequences", func(t *testing.T) {
+		next := FromNode(toYAMLTest("[a, b, c, d]", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.SequenceNode)).
+			MapKeys()
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false for sequence")
+		}
+	})
+}
+
+func TestMapValues(t *testing.T) {
+	t.Run("returns the values of a map", func(t *testing.T) {
+		next := FromNode(toYAMLTest("a: b\nc: d\ne: f", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.MappingNode)).
+			MapValues()
+
+		for _, value := range []string{"b", "d", "f"} {
+			node, ok := next()
+			if !ok {
+				t.Errorf("expected ok to be true for value %q", value)
+			}
+			if node.Value != value {
+				t.Errorf("expected node.Value=%q, got %q", value, node.Value)
+			}
+		}
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false at end")
+		}
+	})
+
+	t.Run("returns nothing for sequences", func(t *testing.T) {
+		next := FromNode(toYAMLTest("[a, b, c, d]", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.SequenceNode)).
+			MapValues()
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false for sequence")
+		}
+	})
+}
+
+func TestIterate(t *testing.T) {
+	repeater := func(next Iterator) Iterator {
+		return func() (node *yaml.Node, ok bool) {
+			node, ok = next()
+			if ok {
+				node = scalarNode(strings.Repeat(node.Value, 2))
+			}
+			return
+		}
+	}
+
+	next := FromNodes(scalarNode("a")).
+		Iterate(repeater).
+		Iterate(repeater)
+
+	node, ok := next()
+	if !ok {
+		t.Errorf("expected ok to be true")
+	}
+	if node.Value != "aaaa" {
+		t.Errorf("expected node.Value to be 'aaaa', got %q", node.Value)
+	}
+}
+
+func TestValuesForMap(t *testing.T) {
+	t.Run("returns the values of a map matching the key/value predicates", func(t *testing.T) {
+		next := FromNode(toYAMLTest("a: b\nc: d\ne: f", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.MappingNode)).
+			ValuesForMap(All, func(node *yaml.Node) bool {
+				return node.Value == "d"
+			})
+
+		node, ok := next()
+		if !ok {
+			t.Errorf("expected ok to be true")
+		}
+		if node.Value != "d" {
+			t.Errorf("expected node.Value to be 'd', got %q", node.Value)
+		}
+
+		_, ok = next()
+		if ok {
+			t.Errorf("expected ok to be false at end")
+		}
+	})
+
+	t.Run("returns nothing for sequences", func(t *testing.T) {
+		next := FromNode(toYAMLTest("[a, b, c, d]", t)).
+			RecurseNodes().
+			Filter(WithKind(yaml.SequenceNode)).
+			ValuesForMap(All, All)
+		_, ok := next()
+		if ok {
+			t.Errorf("expected ok to be false for sequence")
+		}
+	})
+}
+
+func TestFromIterators(t *testing.T) {
+	next := FromIterators(
+		FromNode(&yaml.Node{Value: "a"}),
+		FromNode(&yaml.Node{Value: "b"}),
+		FromNode(&yaml.Node{Value: "c"}),
+	)
+
+	for _, value := range []string{"a", "b", "c"} {
+		node, ok := next()
+		if !ok {
+			t.Errorf("expected ok to be true for value %q", value)
+		}
+		if node.Value != value {
+			t.Errorf("expected node.Value=%q, got %q", value, node.Value)
+		}
+	}
+	_, ok := next()
+	if ok {
+		t.Errorf("expected ok to be false at end")
+	}
+}
+
+// --- helpers ---
 
 var mapNode = &yaml.Node{
 	Kind: yaml.MappingNode,
@@ -258,11 +326,11 @@ func scalarNode(val string) *yaml.Node {
 	}
 }
 
-func toYAML(s string) *yaml.Node {
+func toYAMLTest(s string, t *testing.T) *yaml.Node {
 	var node yaml.Node
-
 	err := yaml.Unmarshal([]byte(s), &node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-
+	if err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
 	return &node
 }
