@@ -1,4 +1,4 @@
-module github.com/jimschubert/go-yit
+module github.com/dprotaso/go-yit
 
 go 1.23.0
 
